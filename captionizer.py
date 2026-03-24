@@ -45,9 +45,10 @@ class Captionizer:
 if __name__ == "__main__":
     from mhc.dataset import MHCDataset
     from mhc.transformer import MHCTransformer
-    from mhc.constants import MHC_CHANNEL_CONFIG
+    from mhc.constants import MHC_CHANNEL_CONFIG, ACTIVITY_CHANNELS, SLEEP_CHANNELS
     from extractors.statistical import StatisticalExtractor
     from extractors.structural import StructuralExtractor
+    from extractors.semantic import SemanticExtractor
     from visualizer import plot_row
     import numpy as np
 
@@ -55,6 +56,7 @@ if __name__ == "__main__":
     annotator = Annotator([
         StatisticalExtractor(MHC_CHANNEL_CONFIG),
         StructuralExtractor(MHC_CHANNEL_CONFIG),
+        SemanticExtractor(MHC_CHANNEL_CONFIG, activity_channels=ACTIVITY_CHANNELS, sleep_channels=SLEEP_CHANNELS),
     ])
     captionizer = Captionizer(dataset, MHCTransformer(), annotator)
     print(f"Dataset size: {len(dataset)}")

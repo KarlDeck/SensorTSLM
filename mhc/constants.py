@@ -60,4 +60,11 @@ MHC_CHANNEL_CONFIG = ChannelConfig(
     },
 )
 
+ACTIVITY_CHANNELS = [
+    "walking", "cycling", "running", "other", "mixed_cardio",
+    "strength", "elliptical", "hiit", "functional", "yoga",
+]
+
+SLEEP_CHANNELS = ["asleep", "in_bed"]
+
 DATASET_DIR = os.environ.get("MHC_DATASET_DIR", "data/mhc")
