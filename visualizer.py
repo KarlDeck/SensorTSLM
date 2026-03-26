@@ -117,9 +117,12 @@ def plot_row(
 
     if semantic_captions:
         sem_text = textwrap.fill("  ".join(semantic_captions), width=140)
+        n_lines = sem_text.count("\n") + 1
+        line_height = (7 / 72) / fig.get_size_inches()[1]
         fig.text(0.5, 0.98, sem_text, ha="center", va="top", fontsize=7, style="italic")
-
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
+        fig.tight_layout(rect=[0, 0, 1, 0.96 - line_height * max(n_lines - 1, 0)])
+    else:
+        fig.tight_layout(rect=[0, 0, 1, 0.96])
 
     if save_path:
         fig.savefig(save_path, dpi=150)
