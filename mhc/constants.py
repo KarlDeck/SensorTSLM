@@ -7,7 +7,7 @@
 import os
 
 from extractors import ChannelConfig
-from aggregators import NonZeroAggregator
+
 from detectors.trend import TrendDetector
 from detectors.spike import SpikeDetector
 
@@ -48,7 +48,7 @@ MHC_CHANNEL_CONFIG = ChannelConfig(
     names=CHANNEL_NAMES,
     meta=CHANNEL_META,
     continuous=CONTINUOUS_CHANNELS,
-    aggregators={"hk_watch:HKQuantityTypeIdentifierHeartRate": NonZeroAggregator()},
+    aggregators={},
     detectors={
         "hk_iphone:HKQuantityTypeIdentifierStepCount":              [TrendDetector(), SpikeDetector()],
         "hk_iphone:HKQuantityTypeIdentifierDistanceWalkingRunning": [TrendDetector(), SpikeDetector()],

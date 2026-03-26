@@ -34,8 +34,7 @@ class StatisticalExtractor(CaptionExtractor):
             if signal.name not in self.config.continuous:
                 continue
 
-            # remove data gaps
-            series = signal.data[~np.isnan(signal.data)].astype(float)
+            series = signal.data
 
             aggregator = self.config.aggregators.get(signal.name, DEFAULT_AGGREGATOR)
             stats = aggregator.aggregate(series)
