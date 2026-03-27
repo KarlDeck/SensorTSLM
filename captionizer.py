@@ -9,15 +9,25 @@ from __future__ import annotations
 from timef.schema import DatasetManifest, CaptionResult
 from transformer import Transformer
 from annotator import Annotator
+from reviewer import EvaluationResult, Reviewer
 
 
 class Captionizer:
-    def __init__(self, dataset, transformer: Transformer, annotator: Annotator) -> None:
+    def __init__(
+        self,
+        dataset,
+        transformer: Transformer,
+        annotator: Annotator,
+        reviewer: Reviewer | None = None,
+    ) -> None:
         self.dataset = dataset
         self.transformer = transformer
         self.annotator = annotator
+        self.reviewer = reviewer
 
-    def run(self, max_rows: int | None = None) -> CaptionResult:
+    def run(
+        self, max_rows: int | None = None,
+    ) -> tuple[CaptionResult, EvaluationResult | None]:
         manifest = DatasetManifest()
         for spec in self.transformer.get_signal_specs():
             manifest.signal_specs[spec.id] = spec
@@ -39,7 +49,8 @@ class Captionizer:
             result.samples.extend(samples)
             result.annotations.extend(annotations)
 
-        return result
+        evaluation = self.reviewer.evaluate(result) if self.reviewer else None
+        return result, evaluation
 
 
 if __name__ == "__main__":
@@ -48,6 +59,7 @@ if __name__ == "__main__":
     from mhc.constants import MHC_CHANNEL_CONFIG
     from extractors.statistical import StatisticalExtractor
     from extractors.structural import StructuralExtractor
+    from models.local import LocalConfig, LocalModel
     from visualizer import plot_row
     import numpy as np
 
@@ -56,13 +68,20 @@ if __name__ == "__main__":
         StatisticalExtractor(MHC_CHANNEL_CONFIG),
         StructuralExtractor(MHC_CHANNEL_CONFIG),
     ])
-    captionizer = Captionizer(dataset, MHCTransformer(), annotator)
+    model = LocalModel(
+        LocalConfig(model="google/gemma-3-4b-it"),
+        MHC_CHANNEL_CONFIG,
+    )
+    reviewer = Reviewer(model)
+    captionizer = Captionizer(dataset, MHCTransformer(), annotator, reviewer=reviewer)
     print(f"Dataset size: {len(dataset)}")
 
-    result = captionizer.run(max_rows=100)
+    result, evaluation = captionizer.run(max_rows=5)
     print(f"Signals: {len(result.signals)}")
     print(f"Samples: {len(result.samples)}")
     print(f"Annotations: {len(result.annotations)}")
+    if evaluation:
+        print(f"Evaluation: {len(evaluation.scores)} scores, mean={evaluation.mean_score}")
 
     # Plot first 4 rows with at least 5 active channels
     shown = 0
