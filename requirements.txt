@@ -1,0 +1,6 @@
+datasets
+matplotlib
+numpy
+pyarrow
+scipy
+torch
