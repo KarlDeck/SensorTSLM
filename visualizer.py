@@ -6,12 +6,16 @@
 #
 from __future__ import annotations
 
+import argparse
 import textwrap
 from math import ceil
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
+from extractors import ChannelConfig
 from timef.schema import Annotation, Sample, Signal
 
 
@@ -121,6 +125,133 @@ def plot_row(
     return fig
 
 
+def plot_detector_view(
+    signals: list[Signal],
+    config: ChannelConfig,
+    save_path: str | None = None,
+    n_cols: int = 3,
+) -> plt.Figure | None:
+    channel_names = [s.name for s in signals]
+    n_channels = len(channel_names)
+    if n_channels == 0:
+        raise ValueError("signals must not be empty")
+
+    data = np.stack([s.data for s in signals])
+    time_minutes = np.arange(data.shape[1])
+
+    n_rows = ceil(n_channels / n_cols)
+    fig, axes_2d = plt.subplots(n_rows, n_cols, figsize=(20, 4.6 * n_rows), sharex="col")
+    axes = np.atleast_1d(axes_2d).flatten()
+
+    legend_handles: dict[str, object] = {
+        "signal": Line2D([0], [0], color="steelblue", linewidth=1.0, label="signal"),
+        "trend:increasing": Patch(facecolor="#4daf4a", edgecolor="none", alpha=0.18, label="trend (increasing)"),
+        "trend:decreasing": Patch(facecolor="#ff7f00", edgecolor="none", alpha=0.18, label="trend (decreasing)"),
+        "spike": Line2D([0], [0], marker="^", linestyle="None", color="#2ca02c", markersize=6, label="spike"),
+        "drop": Line2D([0], [0], marker="v", linestyle="None", color="#d62728", markersize=6, label="drop"),
+        "gap": Patch(facecolor="#d62728", edgecolor="none", alpha=0.10, label="gap"),
+    }
+
+    for i, (ax, signal) in enumerate(zip(axes[:n_channels], signals)):
+        series = data[i]
+        valid = ~np.isnan(series)
+        ax.plot(time_minutes[valid], series[valid], linewidth=0.8, color="steelblue")
+
+        detector_summaries: list[str] = []
+        for detector in config.detectors.get(signal.name, []):
+            detector_name = detector.__class__.__name__
+            results = detector.detect(signal.data)
+            if not results:
+                detector_summaries.append(f"{detector_name}: none")
+                continue
+
+            rendered = []
+            for result in results:
+                if result.event_type == "trend":
+                    direction = result.direction or "trend"
+                    color = "#4daf4a" if direction == "increasing" else "#ff7f00"
+                    ax.axvspan(result.start_minute, result.end_minute, color=color, alpha=0.18)
+                    rendered.append(f"{direction} {result.start_minute}-{result.end_minute}")
+                elif result.event_type == "spike":
+                    minute = int(result.spike_minute)
+                    value = signal.data[minute]
+                    if not np.isnan(value):
+                        ax.scatter(minute, value, color="#2ca02c", marker="^", s=28, zorder=3)
+                    rendered.append(f"spike @{minute}")
+                elif result.event_type == "drop":
+                    minute = int(result.spike_minute)
+                    value = signal.data[minute]
+                    if not np.isnan(value):
+                        ax.scatter(minute, value, color="#d62728", marker="v", s=28, zorder=3)
+                    rendered.append(f"drop @{minute}")
+                elif result.event_type == "gap":
+                    ax.axvspan(result.start_minute, result.end_minute, color="#d62728", alpha=0.10)
+                    rendered.append(f"gap {result.start_minute}-{result.end_minute}")
+                else:
+                    rendered.append(result.event_type)
+
+            detector_summaries.append(f"{detector_name}: {', '.join(rendered)}")
+
+        display_name = config.meta.get(signal.name, (signal.name, "", 0))[0]
+        ax.set_title(display_name, fontsize=8)
+        ax.set_ylabel(signal.name, fontsize=6, rotation=90, ha="right", va="center")
+        ax.tick_params(axis="y", labelsize=6)
+        ax.tick_params(axis="x", labelsize=6, labelbottom=True)
+        ax.set_xlim(0, len(series))
+
+        summary_text = "\n".join(textwrap.fill(line, width=56) for line in detector_summaries)
+        if summary_text:
+            ax.text(
+                0.01,
+                0.99,
+                summary_text,
+                transform=ax.transAxes,
+                va="top",
+                ha="left",
+                fontsize=5.5,
+                bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "alpha": 0.85, "edgecolor": "#cccccc"},
+            )
+
+    for col in range(n_cols):
+        axes[col].set_xticks(range(0, data.shape[1] + 1, 200))
+
+    for ax in axes[n_channels:]:
+        ax.set_visible(False)
+
+    for ax in axes[:n_channels]:
+        ax.set_xlabel("Time (minutes)")
+
+    meta = signals[0].metadata if signals else {}
+    title = f"{meta.get('user_id', '')}  |  {meta.get('date', '')}  |  detector debug view"
+    fig.suptitle(title, fontsize=10)
+    fig.legend(
+        handles=list(legend_handles.values()),
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.99),
+        ncol=6,
+        fontsize=7,
+        frameon=False,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+
+    if save_path:
+        fig.savefig(save_path, dpi=150)
+        plt.close(fig)
+        return None
+
+    plt.show()
+    return fig
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Visualize caption or detector-debug plots for one dataset row.")
+    parser.add_argument("--mode", choices=("captions", "detectors"), default="captions")
+    parser.add_argument("--row-index", type=int, default=0, help="Dataset row index to visualize.")
+    parser.add_argument("--save-path", type=str, default=None, help="Optional output image path.")
+    parser.add_argument("--min-wear-pct", type=float, default=90.0, help="Minimum wear percentage filter.")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
     from mhc.dataset import MHCDataset
     from mhc.transformer import MHCTransformer
@@ -130,10 +261,22 @@ if __name__ == "__main__":
     from annotator import Annotator
     from captionizer import Captionizer
 
-    dataset = MHCDataset(min_wear_pct=90.0)
-    annotator = Annotator([StatisticalExtractor(MHC_CHANNEL_CONFIG), StructuralExtractor(MHC_CHANNEL_CONFIG)])
-    captionizer = Captionizer(dataset, MHCTransformer(), annotator)
-    result = captionizer.run(max_rows=1)
-    for signals, samples, annotations in result.iter_rows():
-        plot_row(signals, samples, annotations, save_path="sample_plot.png")
-        print("Saved sample_plot.png")
+    args = _parse_args()
+
+    dataset = MHCDataset(min_wear_pct=args.min_wear_pct)
+    if args.row_index < 0 or args.row_index >= len(dataset):
+        raise IndexError(f"row-index must be between 0 and {len(dataset) - 1}, got {args.row_index}")
+
+    row = dataset[args.row_index]
+    signals = MHCTransformer().transform_row(row)
+
+    if args.mode == "detectors":
+        save_path = args.save_path or f"detector_debug_row_{args.row_index}.png"
+        plot_detector_view(signals, MHC_CHANNEL_CONFIG, save_path=save_path)
+        print(f"Saved {save_path}")
+    else:
+        annotator = Annotator([StatisticalExtractor(MHC_CHANNEL_CONFIG), StructuralExtractor(MHC_CHANNEL_CONFIG)])
+        samples, annotations = annotator.annotate(signals)
+        save_path = args.save_path or "sample_plot.png"
+        plot_row(signals, samples, annotations, save_path=save_path)
+        print(f"Saved {save_path}")
